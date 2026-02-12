@@ -1,0 +1,47 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+logs/
+*.log
+
+# Flask uploads / generated assets
+static/uploads/
+
+# Database (usually generated locally)
+*.db
+*.sqlite3
+
+# ML artifacts (often large)
+*.h5
+*.keras
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Env secrets
+.env
+.env.*

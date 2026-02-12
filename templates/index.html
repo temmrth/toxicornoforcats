@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Is This Toxic For My Cat?</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='profile_panel_stats_halfscreen.css') }}">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+<header>
+    <div class="brand">
+        <img src="{{ url_for('static', filename='assets/logo.png') }}" class="logo">
+        <h1>Is This Toxic For My Cat?</h1>
+    </div>
+
+    <div class="menu-container">
+        <button class="menu-btn" onclick="toggleMenu()">Menu</button>
+        <div id="dropdown" class="dropdown">
+            {% if session.get("user") %}
+                <a href="#" onclick="openProfile(); closeMenu(); return false;">Profile</a>
+                <a href="/logout" class="danger">Logout</a>
+            {% else %}
+                <a href="#" onclick="openModal(); closeMenu(); return false;">Login</a>
+                <a href="#" onclick="openRegister(); closeMenu(); return false;">Register</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- PROFILE + STATS GLASS WINDOW -->
+    <div id="profileBackdrop" class="profile-backdrop" onclick="closeProfile()"></div>
+    <div id="profilePanel" class="profile-panel" aria-hidden="true">
+        <div class="profile-head">
+            <div class="profile-title">Profile</div>
+            <button class="profile-close" onclick="closeProfile()" type="button" aria-label="Close">✕</button>
+        </div>
+
+        <div class="profile-body">
+            <div class="profile-avatar">
+                {{ (session.get("user") or "G")[0]|upper }}
+            </div>
+
+            <div class="profile-info">
+                <div class="profile-label">Name</div>
+                <div class="profile-name">{{ session.get("user") or "Guest" }}</div>
+                <div class="profile-sub" id="totalChecksText">—</div>
+            </div>
+        </div>
+
+        <div class="profile-divider"></div>
+
+        <div class="stats-wrap">
+            {% if session.get("user") %}
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-title">Toxic vs Non-toxic vs Unknown</div>
+                        <canvas id="chartLabels" height="160"></canvas>
+                        <div class="stat-note">Shows what your checks most often return.</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-title">Top 5 searched plants</div>
+                        <canvas id="chartTop" height="160"></canvas>
+                        <div class="stat-note">Your most frequent queries (text + image labels).</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-title">Confidence distribution</div>
+                        <canvas id="chartConf" height="160"></canvas>
+                        <div class="stat-note">How confident the model is on image checks.</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-title">Checks by day (last 14)</div>
+                        <canvas id="chartDays" height="160"></canvas>
+                        <div class="stat-note">Activity over time (helps show usage).</div>
+                    </div>
+                </div>
+                <div class="stats-foot" id="statsStatus">Loading stats…</div>
+            {% else %}
+                <div class="stats-locked">
+                    Login to see your personal analytics.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</header>
+
+<main>
+
+<section class="hero">
+
+    <!-- RESULT OUTSIDE (ABOVE CARD) -->
+    {% if plant and label %}
+        <div class="outside-result">
+            <span class="top-plant">{{ plant }}</span>
+            <span class="top-dash"> — </span>
+
+            {% if label == "Toxic" %}
+                <span class="top-label toxic">Toxic</span> <span class="top-icon">⚠️</span>
+            {% elif label == "Non-toxic" %}
+                <span class="top-label safe">Non-toxic</span> <span class="top-icon">🌿</span>
+            {% else %}
+                <span class="top-label unknown">Unknown</span> <span class="top-icon">❓</span>
+            {% endif %}
+
+            {% if conf is not none %}
+                <span class="top-conf">({{ conf }}%)</span>
+            {% endif %}
+        </div>
+    {% elif result_text %}
+        <div class="outside-result">
+            {{ result_text }}
+        </div>
+    {% endif %}
+
+    <div class="main-card">
+        <div class="hero-text">
+            We’ll help you understand whether it’s dangerous for your cat or not.
+        </div>
+
+        <!-- TEXT SEARCH -->
+        <form method="POST" action="/check" class="form-box">
+            <input type="text" name="plant_name" placeholder="Enter plant name..." required>
+            <div class="btn-row vertical">
+                <button type="submit" class="btn glass-btn full-btn">Check plant by search ↑</button>
+            </div>
+        </form>
+
+        <!-- IMAGE UPLOAD -->
+        <form id="imgForm" method="POST" action="/upload" enctype="multipart/form-data" class="form-box" style="margin-top: 14px;">
+            <input id="fileInput" type="file" name="file" accept="image/*" style="display:none;" required>
+            <button type="button" class="btn glass-btn dark-glass full-btn" onclick="pickAndSubmit()">
+                📷 Check by Image
+            </button>
+        </form>
+    </div>
+
+</section>
+
+<section class="recent">
+    <div class="recent-head">
+        <h2>Recent Checks</h2>
+    </div>
+
+    <div class="history-grid">
+        {% if history %}
+            {% for h in history %}
+            <div class="history-card
+                {% if h.label == 'Toxic' %} glow-red {% endif %}
+                {% if h.label == 'Non-toxic' %} glow-green {% endif %}
+            ">
+                <div class="history-name">{{ h.query }}</div>
+                <div class="history-tag">{{ h.label }}</div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div style="color:rgba(255,255,255,0.85); font-weight:900; padding:10px 2px;">
+                No recent checks yet.
+            </div>
+        {% endif %}
+    </div>
+</section>
+
+</main>
+
+<!-- LOGIN MODAL -->
+<div id="loginModal" class="modal">
+    <div class="modal-content">
+        <button class="xbtn" onclick="closeModal()">&times;</button>
+        <h3>Login</h3>
+        <form method="POST" action="/login">
+            <input type="text" name="username" placeholder="Username" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit" class="btn glass-btn modal-btn">Login</button>
+        </form>
+    </div>
+</div>
+
+<!-- REGISTER MODAL -->
+<div id="regModal" class="modal">
+    <div class="modal-content">
+        <button class="xbtn" onclick="closeRegister()">&times;</button>
+        <h3>Register</h3>
+        <form method="POST" action="/register">
+            <input type="text" name="username" placeholder="Username" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit" class="btn glass-btn modal-btn">Create</button>
+        </form>
+    </div>
+</div>
+
+<script>
+function openModal(){ document.getElementById("loginModal").style.display="flex"; }
+function closeModal(){ document.getElementById("loginModal").style.display="none"; }
+function openRegister(){ document.getElementById("regModal").style.display="flex"; }
+function closeRegister(){ document.getElementById("regModal").style.display="none"; }
+
+function toggleMenu(){ document.getElementById("dropdown").classList.toggle("show"); }
+function closeMenu(){ document.getElementById("dropdown").classList.remove("show"); }
+
+let _chartsBuilt = false;
+let _chart1, _chart2, _chart3, _chart4;
+
+async function loadStatsAndDraw(){
+  const status = document.getElementById("statsStatus");
+  try{
+    const res = await fetch("/stats_data");
+    const data = await res.json();
+    if(!data.ok){
+      if(status) status.textContent = "Login to see stats.";
+      return;
+    }
+
+    const total = data.total_checks || 0;
+    const totalEl = document.getElementById("totalChecksText");
+    if(totalEl) totalEl.textContent = total ? (total + " total checks") : "No checks yet";
+
+    // Labels chart
+    const labels = ["Toxic","Non-toxic","Unknown"];
+    const counts = labels.map(k => (data.label_counts && data.label_counts[k]) ? data.label_counts[k] : 0);
+
+    // Top queries
+    const tq = data.top_queries || [];
+    const tqLabels = tq.map(x => x.query);
+    const tqCounts = tq.map(x => x.count);
+
+    // Confidence bins
+    const cb = data.conf_bins || [];
+    const cbLabels = cb.map(x => x.bin);
+    const cbCounts = cb.map(x => x.count);
+
+    // Per day
+    const pd = data.per_day || [];
+    const pdLabels = pd.map(x => x.day);
+    const pdCounts = pd.map(x => x.count);
+
+    // (Re)build charts
+    if(_chart1) _chart1.destroy();
+    if(_chart2) _chart2.destroy();
+    if(_chart3) _chart3.destroy();
+    if(_chart4) _chart4.destroy();
+
+    const common = {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: "rgba(0,0,0,.65)" }, grid: { color: "rgba(0,0,0,.08)" } },
+        y: { ticks: { color: "rgba(0,0,0,.65)" }, grid: { color: "rgba(0,0,0,.08)" } }
+      }
+    };
+
+    _chart1 = new Chart(document.getElementById("chartLabels"), {
+      type: "bar",
+      data: { labels, datasets: [{ data: counts }] },
+      options: common
+    });
+
+    _chart2 = new Chart(document.getElementById("chartTop"), {
+      type: "bar",
+      data: { labels: tqLabels, datasets: [{ data: tqCounts }] },
+      options: common
+    });
+
+    _chart3 = new Chart(document.getElementById("chartConf"), {
+      type: "bar",
+      data: { labels: cbLabels, datasets: [{ data: cbCounts }] },
+      options: common
+    });
+
+    _chart4 = new Chart(document.getElementById("chartDays"), {
+      type: "line",
+      data: { labels: pdLabels, datasets: [{ data: pdCounts, tension: 0.25 }] },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: "rgba(0,0,0,.65)" }, grid: { color: "rgba(0,0,0,.08)" } },
+          y: { ticks: { color: "rgba(0,0,0,.65)" }, grid: { color: "rgba(0,0,0,.08)" } }
+        }
+      }
+    });
+
+    if(status) status.textContent = "Updated from your history.";
+  } catch(e){
+    if(status) status.textContent = "Could not load stats.";
+  }
+}
+
+function openProfile(){
+    const p = document.getElementById("profilePanel");
+    const b = document.getElementById("profileBackdrop");
+    p.classList.add("show");
+    b.classList.add("show");
+    p.setAttribute("aria-hidden","false");
+
+    // Lazy-load stats when opened
+    if(!_chartsBuilt){
+      _chartsBuilt = true;
+      loadStatsAndDraw();
+    } else {
+      // refresh quickly
+      loadStatsAndDraw();
+    }
+}
+function closeProfile(){
+    const p = document.getElementById("profilePanel");
+    const b = document.getElementById("profileBackdrop");
+    p.classList.remove("show");
+    b.classList.remove("show");
+    p.setAttribute("aria-hidden","true");
+}
+
+window.addEventListener("click", function(e){
+    const dropdown = document.getElementById("dropdown");
+    const menuBtn = document.querySelector(".menu-btn");
+    if (!dropdown.contains(e.target) && !menuBtn.contains(e.target)) dropdown.classList.remove("show");
+
+    const profile = document.getElementById("profilePanel");
+    if (profile.classList.contains("show")){
+        const clickedInside = profile.contains(e.target) || dropdown.contains(e.target) || menuBtn.contains(e.target);
+        if (!clickedInside) closeProfile();
+    }
+});
+
+document.addEventListener("keydown", function(e){
+    if (e.key === "Escape") closeProfile();
+});
+
+function pickAndSubmit(){
+    const inp = document.getElementById("fileInput");
+    inp.click();
+    inp.onchange = function(){
+        if (inp.files.length > 0){
+            document.getElementById("imgForm").submit();
+        }
+    }
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Profile</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+
+<body>
+
+<header>
+    <div class="brand">
+        <img src="{{ url_for('static', filename='assets/logo.png') }}" class="logo">
+        <h1 style="color:#000;">Profile: {{ user }}</h1>
+    </div>
+
+    <div class="menu-container">
+        <a href="/" style="text-decoration:none;">
+            <button class="menu-btn">Home</button>
+        </a>
+    </div>
+</header>
+
+<main>
+<section class="recent" style="margin-top: 60px;">
+    <div class="recent-head">
+        <h2>History</h2>
+    </div>
+
+    <div class="history-grid">
+        {% for x in items %}
+        <div class="history-card
+            {% if x.label == 'Toxic' %} glow-red {% endif %}
+            {% if x.label == 'Safe' %} glow-green {% endif %}
+        ">
+            <div class="history-name">
+                {{ x.query }}
+            </div>
+
+            <div class="history-tag">
+                {{ x.label }}
+                {% if x.confidence %}
+                    ({{ x.confidence }}%)
+                {% endif %}
+            </div>
+
+            {% if x.image %}
+            <div style="margin-top:10px;">
+                <img src="{{ url_for('static', filename='uploads/' ~ x.image) }}"
+                     style="width:100%; border-radius:16px; border: 1px solid rgba(255,255,255,0.25);">
+            </div>
+            {% endif %}
+
+            <div style="margin-top:10px; font-size:12px; color: rgba(0,0,0,0.55); font-weight:700;">
+                {{ x.method }} • {{ x.ts }}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+</main>
+
+</body>
+</html>
+
