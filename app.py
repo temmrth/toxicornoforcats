@@ -12,7 +12,6 @@ from flask import Flask, render_template, request, redirect, session, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
-# Try to load model (tensorflow first, then keras)
 load_model = None
 try:
     from tensorflow.keras.models import load_model as _lm
@@ -24,10 +23,8 @@ except Exception:
     except Exception:
         load_model = None
 
-
 app = Flask(__name__)
 
-# Use env var in real deploy; fallback is fine for local demo.
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev_secret_key_change_me")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -36,7 +33,6 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
 MODEL_PATH = os.path.join(BASE_DIR, "plant_model.h5")
 CLASSES_PATH = os.path.join(BASE_DIR, "model_classes.json")
 
-# --- Logging setup (console + rotating file) ---
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_PATH = os.path.join(LOG_DIR, "app.log")
@@ -59,13 +55,12 @@ if not logger.handlers:
 
 logger.info("App booting…")
 
-
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# --- Background task: cleanup old uploads ---
 _last_cleanup_ts = 0.0
 
+# delete old uploads
 def cleanup_uploads(max_age_hours: int = 24) -> int:
     """Delete uploaded images older than max_age_hours. Returns number deleted."""
     deleted = 0
@@ -87,31 +82,28 @@ def cleanup_uploads(max_age_hours: int = 24) -> int:
         logger.exception("Cleanup uploads failed")
     return deleted
 
-# Run once at startup (best-effort)
 cleanup_uploads()
 
-
 MODEL = None
-CLASSES = ["aloe_vera", "lily", "monstera"]  # fallback
+CLASSES = ["aloe_vera", "lily", "monstera"]
 
-# Toxicity label for pets/cats
 TOX = {
     "aloe_vera": "Toxic",
     "lily": "Toxic",
     "monstera": "Toxic",
 }
 
-
+# get utc time
 def now() -> str:
     return datetime.utcnow().isoformat()
 
-
+# open db connection
 def get_db() -> sqlite3.Connection:
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
     return con
 
-
+# create db tables
 def init_db() -> None:
     con = get_db()
     cur = con.cursor()
@@ -156,11 +148,11 @@ def init_db() -> None:
     con.commit()
     con.close()
 
-
+# check file type
 def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-
+# load class names
 def load_classes() -> None:
     """Loads class order used by the trained model, if a json exists."""
     global CLASSES
@@ -173,7 +165,7 @@ def load_classes() -> None:
         except Exception:
             pass
 
-
+# load ml model
 def load_ml() -> None:
     global MODEL
     if MODEL is not None:
@@ -193,7 +185,7 @@ def load_ml() -> None:
     else:
         MODEL = None
 
-
+# save check history
 def add_history(username: str, query: str, method: str, label: str, conf=None, img=None) -> None:
     con = get_db()
     con.execute(
@@ -206,7 +198,7 @@ def add_history(username: str, query: str, method: str, label: str, conf=None, i
     con.commit()
     con.close()
 
-
+# read recent checks
 def get_recent(username: str, limit: int = 6):
     if not username:
         return []
@@ -229,7 +221,7 @@ def get_recent(username: str, limit: int = 6):
         for r in rows
     ]
 
-
+# lookup plant label
 def text_check(name: str) -> str:
     plant = (name or "").strip().lower()
     if not plant:
@@ -246,7 +238,7 @@ def text_check(name: str) -> str:
         return "Unknown"
     return "Toxic" if int(row["is_toxic"]) == 1 else "Non-toxic"
 
-
+# predict from image
 def predict_image(path: str):
     """Return (class_name, confidence_percent, label)."""
     load_ml()
@@ -275,22 +267,22 @@ def predict_image(path: str):
         logger.exception("predict_image failed")
         return None, None, "Unknown"
 
-
 init_db()
 
-
-
+# run before request
 @app.before_request
+# run quick cleanup
 def _periodic_maintenance():
     """Lightweight periodic maintenance."""
     global _last_cleanup_ts
     now_ts = time.time()
-    # run at most once per 10 minutes
     if now_ts - _last_cleanup_ts > 600:
         _last_cleanup_ts = now_ts
         cleanup_uploads(max_age_hours=24)
 
+# web endpoint
 @app.route("/")
+# render home page
 def index():
     user = session.get("user")
     history = get_recent(user, 6) if user else []
@@ -304,7 +296,6 @@ def index():
 
     auth_error = session.pop("auth_error", None)
 
-    # Backward-friendly: if only structured exists -> build text
     if plant and label and result_text is None:
         if conf is None:
             result_text = f"{plant} — {label}"
@@ -324,8 +315,9 @@ def index():
         user=user,
     )
 
-
+# web endpoint
 @app.route("/check", methods=["POST"])
+# handle text check
 def check():
     plant_name = (request.form.get("plant_name") or "").strip()
     if not plant_name:
@@ -345,8 +337,9 @@ def check():
 
     return redirect("/")
 
-
+# web endpoint
 @app.route("/upload", methods=["POST"])
+# handle image check
 def upload():
     user = session.get("user")
 
@@ -383,8 +376,9 @@ def upload():
 
     return redirect("/")
 
-
+# web endpoint
 @app.route("/register", methods=["POST"])
+# create new account
 def register():
     u = (request.form.get("username") or "").strip()
     p = (request.form.get("password") or "").strip()
@@ -409,8 +403,9 @@ def register():
 
     return redirect("/")
 
-
+# web endpoint
 @app.route("/login", methods=["POST"])
+# sign in user
 def login():
     u = (request.form.get("username") or "").strip()
     p = (request.form.get("password") or "").strip()
@@ -432,16 +427,19 @@ def login():
 
     return redirect("/")
 
-
+# web endpoint
 @app.route("/logout")
+# sign out user
 def logout():
     logger.info('Logout: user=%s', session.get('user'))
     session.pop("user", None)
     return redirect("/")
 
-
+# web endpoint
 @app.route("/profile")
+# web endpoint
 @app.route("/stats_data")
+# send stats json
 def stats_data():
     """Return per-user analytics for charts in the profile panel."""
     user = session.get("user")
@@ -450,7 +448,6 @@ def stats_data():
 
     con = get_db()
 
-    # 1) Label counts
     rows = con.execute(
         """
         SELECT result_label, COUNT(*) as cnt
@@ -462,7 +459,6 @@ def stats_data():
     ).fetchall()
     label_counts = {r["result_label"]: int(r["cnt"]) for r in rows}
 
-    # 2) Top queries (normalize a bit)
     rows = con.execute(
         """
         SELECT query, COUNT(*) as cnt
@@ -476,7 +472,6 @@ def stats_data():
     ).fetchall()
     top_queries = [{"query": r["query"], "count": int(r["cnt"])} for r in rows]
 
-    # 3) Confidence distribution (image checks only)
     rows = con.execute(
         """
         SELECT confidence
@@ -487,7 +482,6 @@ def stats_data():
     ).fetchall()
     conf_vals = [int(r["confidence"]) for r in rows if r["confidence"] is not None]
 
-    # Bin into 0-9, 10-19, ... 90-100
     bins = [0] * 11
     for v in conf_vals:
         if v < 0:
@@ -498,7 +492,6 @@ def stats_data():
             bins[v // 10] += 1
     conf_bins = [{"bin": f"{i*10}-{i*10+9}" if i < 10 else "100", "count": bins[i]} for i in range(11)]
 
-    # 4) Checks per day (last 14 days by data)
     rows = con.execute(
         """
         SELECT SUBSTR(created_at, 1, 10) as day, COUNT(*) as cnt
@@ -523,9 +516,9 @@ def stats_data():
         "total_checks": sum(label_counts.values()) if label_counts else 0
     })
 
+# profile redirect
 def profile():
     return redirect("/")
-
 
 if __name__ == "__main__":
     app.run(debug=True)
